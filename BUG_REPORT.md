@@ -26,21 +26,17 @@ The check `if (end > calls.length)` ensures that the `end` index is within the b
 If `begin` is greater than `end`, the assembly instruction `sub(end, begin)` will underflow, resulting in a very large value for `res.length`.
 
 ## Impact
-This vulnerability allows an attacker (or a malfunctioning TakerTraits construction) to create a slice with a length close to `2**256`. Since `calldata` access in Solidity/EVM checks bounds against `calldatasize()`, accessing this slice might not immediately crash if the offset + index is within bounds, but the logic downstream might rely on `slice.length` being correct.
+This vulnerability allows constructing a slice with a length close to `2**256`. Since `calldata` access in Solidity/EVM checks bounds against `calldatasize()`, accessing this slice might not immediately crash if the offset + index is within bounds, but the logic downstream might rely on `slice.length` being correct.
 
-More critically, if the VM logic uses this length for loops or copies, it could lead to excessive gas consumption or incorrect program execution. In `ContextLib.runLoop`:
+The primary vectors are:
+1.  **Program Execution**: `ContextLib.program()` uses `slice`. `runLoop` iterates over `programBytes`. If `programPtr` is derived from a corrupted slice with huge length, the loop `pc < programBytes.length` will effectively be infinite (until gas limit). More critically, it allows the VM to interpret data *after* the intended program (e.g., `takerArgs` or other calldata) as instructions. This is a potential arbitrary code execution vulnerability if the attacker controls the calldata layout.
+    - Since `program` is derived from `order.data` (controlled by Maker), this vector mainly allows a Maker to crash the VM or execute weird instructions on their own order.
+    - Taker controls `takerArgs`. If Maker signs an order, Taker can manipulate `takerArgs` but cannot change `program` bytes (which are part of signed order). However, if `program` overlaps with `takerArgs` due to slice manipulation, Taker *could* inject instructions. But `program` slice offsets are in `MakerTraits` (Maker controlled). So Taker cannot change slice bounds.
 
-```solidity
-    function runLoop(Context memory ctx) internal returns (uint256 swapAmountIn, uint256 swapAmountOut) {
-        bytes calldata programBytes = ctx.program();
-        require(ctx.vm.nextPC < programBytes.length, RunLoopExcessiveCall(ctx.vm.nextPC, programBytes.length));
-
-        for (uint256 pc = ctx.vm.nextPC; pc < programBytes.length; ) {
-             // ...
-        }
-```
-
-If `programPtr` is derived from a corrupted slice with huge length, the `runLoop` might interpret subsequent calldata (after the intended program) as instructions, potentially executing arbitrary code if the attacker controls the calldata layout.
+2.  **TakerTraits**: `TakerTraitsLib` uses `slice` to extract `takerArgs`, signatures, etc. Taker controls `TakerTraits`. Taker can trigger underflow here.
+    - This allows Taker to create huge `takerArgs`.
+    - However, `AquaSwapVMRouter` instructions do not appear to consume `takerArgs` directly (e.g., `tryChopTakerArgs` is present in `VM.sol` but unused in `AquaOpcodes.sol`).
+    - Thus, the exploitability via `TakerTraits` seems limited to causing reverts or gas waste.
 
 ## Reproduction
 A simple reproduction contract demonstrates that passing `begin > end` returns a huge length instead of reverting.
@@ -67,6 +63,3 @@ Add a check to ensure `begin <= end` in the `slice` function.
         // ...
     }
 ```
-
-## Note on Opcode Mismatch
-An initial review suggested a potential off-by-one error in `AquaOpcodes.sol` instruction array. Upon closer inspection, the alignment of `Controls._jump` at index 11 appears consistent with the provided code structure (11 `_notInstruction` entries preceding it). Without an external specification defining `_jump` as a different opcode (e.g., 12), the current implementation is assumed correct. The primary issue is the slice underflow.
