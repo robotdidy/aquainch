@@ -26,8 +26,7 @@ contract AquaOpcodes is
     function _notInstruction(Context memory /* ctx */, bytes calldata /* args */) internal view {}
 
     function _opcodes() internal pure virtual returns (function(Context memory, bytes calldata) internal[] memory result) {
-        function(Context memory, bytes calldata) internal[30] memory instructions = [
-            _notInstruction,
+        function(Context memory, bytes calldata) internal[29] memory instructions = [
             _notInstruction,
             // Debug - reserved for debugging utilities (core infrastructure)
             _notInstruction,
