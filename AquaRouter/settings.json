@@ -1,0 +1,32 @@
+{
+	"remappings": [
+		"forge-std/=node_modules/forge-std/src/",
+		"@openzeppelin/contracts/=node_modules/@openzeppelin/contracts/",
+		"@1inch/solidity-utils/=node_modules/@1inch/solidity-utils/",
+		"hardhat-deploy/=node_modules/hardhat-deploy/",
+		"hardhat/=node_modules/hardhat/"
+	],
+	"optimizer": {
+		"enabled": false,
+		"runs": 200
+	},
+	"metadata": {
+		"useLiteralContent": false,
+		"bytecodeHash": "ipfs",
+		"appendCBOR": true
+	},
+	"outputSelection": {
+		"*": {
+			"*": [
+				"evm.bytecode",
+				"evm.deployedBytecode",
+				"devdoc",
+				"userdoc",
+				"metadata",
+				"abi"
+			]
+		}
+	},
+	"evmVersion": "prague",
+	"viaIR": true
+}
